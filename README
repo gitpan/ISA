@@ -1,0 +1,235 @@
+README for ISA.pm
+                                        Time-stamp: "1999-02-02 21:42:35 MST"
+
+NAME
+    ISA -- modify and/or freeze a class's @ISA at compile time
+
+SYNOPSIS
+      package Cat::Himalayan;
+      use ISA qw(-use Cat::Persian Cat::Siamese);
+      
+      ...basically the same as:
+        package Cat::Himalayan;
+        BEGIN { push @ISA, 'Cat::Persian'; }
+        use Cat::Persian;
+        BEGIN { push @ISA, 'Cat::Siamese'; }
+        use Cat::Siamese;
+
+DESCRIPTION
+    A class's @ISA is a list of its superclasses (AKA base classes, AKA
+    generic classes). See the perlobj manpage or the perltoot manpage for
+    details. ISA.pm is a simple module allowing you to manipulate your
+    class's @ISA list at compile-time.
+
+OPTIONS
+    You call ISA.pm by saying "use ISA OPTION, OPTION, OPTION;", for
+    example:
+
+      use ISA 'Cat::Persian', 'Cat::Himalayan';
+
+    or, to represent the list another way, "use ISA qw(OPTION, OPTION,
+    OPTION);", for example:
+
+      use ISA qw(Cat::Persian Cat::Himalayan);
+
+    The most popular important options are "-use", "-freeze", and
+    CLASSNAME.  But for the sake of completeness, these are all the
+    possible options:
+
+    CLASSNAME
+        A classname (basically anything non-null that doesn't begin with a
+        "-" or a "!") is interpreted as a classname to add to the @ISA for
+        the calling package. The classname is added to the end, unless
+        you've set "-start". If it's already in @ISA, it won't be added to
+        the list, unless you set "-force".
+
+        [Note that if you specify a classname with apostrophes (which is
+        obsolescent), like "Tree'DAG_Node", it is added to @ISA with double-
+        colons, like "Tree::DAG_Node". Similarly, saying "::Foo::Bar" is
+        added as "main::Foo::Bar" -- but who'd ever have a class rooted
+        under "main", regardless of which way you refer to it?]
+
+    !CLASSNAME
+        This removes all instances of the given classname from the @ISA.
+
+    -use
+        This turns on the "automagical use" mode (which is off by default),
+        which is effective for just this line, like force mode (see below).
+        In "automagical use" mode, for each classname you ask ISA.pm to add
+        to the @ISA list, ISA.pm will try to "use" that class if it looks
+        like it hasn't been used yet. In other words, this:
+
+            package Tree::Palm;
+            use ISA qw(-use Tree::DAG_Node);
+
+        is basically the same as saying:
+
+            package Tree::Palm;
+            BEGIN { push @ISA, 'Tree::DAG_Node'; }
+            BEGIN { eval "package Tree::Palm; use Tree::DAG_Node;" }
+
+        Note that you shouldn't use this mode except with modules that never
+        export any symbols (and a class generally shouldn't!). Note also
+        that automagical use mode does a simple "use Foo::Bar" -- there's no
+        way to have it say "use Foo::Bar 1.10" or "use Foo::Bar qw(pati
+        pata)". If you want that, use an explicit `use' instead:
+
+            use Foo::Bar qw(pati pata);
+            use ISA qw(Foo::Bar);
+
+        If ISA.pm tries to automagically use a class, but fails, this will
+        cause a fatal error.
+
+        Note also that when ISA checks to see whether a class has been used
+        yet, it doesn't care what package or context it was used in. But
+        that's irrelevant for classes that don't export anything.
+
+    -!use
+        This turns "automagical use" mode back off.
+
+    -freeze
+        This freezes the contents of @ISA. Any subsequent attempts to alter
+        it again thru "use ISA ..." result in a fatal error.
+
+        In future versions of ISA.pm, "-freeze" will (hopefully!) make the
+        given @ISA unalterable, such that attempts to change it will result
+        in a fatal error. For the time being, however, ISA.pm uses an END
+        block to check that all frozen @ISAs have the same contents as what
+        they had when they were frozen; any changes will be noted as pesky
+        `warn'ings.
+
+        Once you freeze an @ISA list, you can't unfreeze it.
+
+        Why freeze @ISA? Because the list of what your class's superclasses
+        are is a basic fact about the class, not something you should go
+        changing after your code has started running. Consider -freeze to be
+        a sanity checker.
+
+    -clear
+        Clears the contents of @ISA.
+
+    -start
+        Normally, requesting that a classname be added to @ISA will (if it's
+        not already in there) add it to the end of the list. However, if you
+        want it added to the beginning (assuming it's not already in there),
+        use '-start'. This is effective only for the given call. For
+        example:
+
+            use ISA qw(Foo);             # line 1
+            use ISA qw(-start Bar Ziz);  # line 2
+            use ISA qw(Baz);             # line 3
+
+        This will leave an @ISA of `qw(Bar Ziz Foo Baz)', because "-start"
+        is effective only for line 2.
+
+    -end
+        This cancels a preceding "-start", so that subsequently adding a
+        classname to @ISA will (if it's not already in there) add it to the
+        end of the list.
+
+    -force
+        This puts ISA.pm in "force mode". In force mode, trying to add a
+        class name to @ISA will always add it, regardless of whether it's
+        already there. By default, force mode is off.
+
+        This leaves force mode on for just this call to ISA.pm. For example:
+
+            use ISA qw(Foo::Bar Foo::Quux);           # line 1
+            use ISA qw(-force Foo::Bar Zaz::Zoo);     # line 2
+            use ISA qw(Foo::Quux);                    # line 3
+
+        Here, the "-force" in line 2 is effective for just that call to @ISA
+        -- so that "Foo::Bar" is added to @ISA again. ("Zaz::Zoo" is added,
+        too, just as it would be normally.) However, in line 3, we're back
+        to the default no-force mode, and so "Foo::Quux" isn't added to @ISA
+        again, since it's already there.
+
+        Force mode is useful in combination with "-start", to forcedly move
+        a class name to the start of @ISA, regardless of whether it's in
+        there already:
+
+            use ISA qw(-force -start Thing::Prime);
+
+        However, you could just as easily do effectively the same thing by
+        removing the class in question from @ISA, then restoring it at the
+        beginning, like so:
+
+            use ISA qw(!Thing::Prime -start Thing::Prime);
+
+    -!force
+        This turns force mode back off.
+
+    -debug
+        This puts puts ISA.pm in "debug mode" -- just like setting
+        $ISA::Debug to 1. This makes ISA.pm spew lots of verbose garbage
+        useful for diagnosing bugs in (or relating to) ISA.pm.
+
+    -!debug
+        This turns off ISA.pm's debug mode.
+
+NOTES
+    Note that ISA.pm and `Class::ISA' are different things.
+
+    Thanks to Eric Watt (Arkuat) Forste for the idea of tying @ISA.
+
+    Thanks to Tim Bunce for writing lib.pm, and to whoever wrote Exporter.pm
+    -- these were both useful precedents to ISA.pm.
+
+COPYRIGHT
+    Copyright (c) 1999 Sean M. Burke. All rights reserved.
+
+    This library is free software; you can redistribute it and/or modify it
+    under the same terms as Perl itself.
+
+AUTHOR
+    Sean M. Burke `sburke@netadventure.net'
+
+
+PREREQUISITES
+
+This suite requires Perl 5; I've only used it under Perl 5.004, so for
+anything lower, you're on your own.
+
+ISA.pm doesn't use any nonstandard modules.
+
+
+INSTALLATION
+
+You install ISA.pm, as you would install any perl module
+library, by running these commands:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+If you want to install a private copy of ISA.pm in your home
+directory, then you should try to produce the initial Makefile with
+something like this command:
+
+  perl Makefile.PL LIB=~/perl
+
+
+DOCUMENTATION
+
+POD-format documentation is included in ISA.pm.  POD is readable with
+the 'perldoc' utility.  See ChangeLog for recent changes.
+
+
+MACPERL INSTALLATION NOTES
+
+Don't bother with the makefiles.  Just move ISA.pm into your MacPerl
+site_lib or lib directory.
+
+
+SUPPORT
+
+Questions, bug reports, useful code bits, and suggestions for
+ISA.pm should just be sent to me at sburke@netadventure.net
+
+
+AVAILABILITY
+
+The latest version of ISA.pm is available from the Comprehensive Perl
+Archive Network (CPAN).  Visit <http://www.perl.com/CPAN/> to find a
+CPAN site near you.
